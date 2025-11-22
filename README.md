@@ -14,8 +14,8 @@ This project is primarily for my own education. It is not intended as a library 
 ## Rough Roadmap / Learning Goals
 
 ### Setup & Basics
-- [ ] Create a window and framebuffer using `minifb`
-- [ ] Implement `set_pixel(x, y, color)`
+- [x] Create a window and framebuffer using `minifb`
+- [x] Implement `set_pixel(x, y, color)`
 
 ### 2D Primitives & Rasterization
 - [ ] Implement Bresenham’s line algorithm
