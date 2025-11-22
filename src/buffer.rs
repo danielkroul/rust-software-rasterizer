@@ -1,3 +1,5 @@
+use crate::drawable::Drawable;
+
 /// A simple framebuffer storing pixel data in a contiguous `Vec<u32>`.
 /// 
 /// Provides basic operations like setting pixels, clearing, resizing, 
@@ -46,5 +48,15 @@ impl Buffer {
     /// Get a slice reference to a buffers pixel data.
     pub fn as_slice(&self) -> &[u32] {
         &self.data
+    }
+}
+
+impl Drawable for Buffer {
+    fn width(&self) -> usize { self.width() }
+
+    fn height(&self) -> usize { self.height() }
+    
+    fn set_pixel(&mut self, x: usize, y: usize, color: u32) {
+        self.set_pixel(x, y, color); 
     }
 }
