@@ -18,7 +18,7 @@ This project is primarily for my own education. It is not intended as a library 
 - [x] Implement `set_pixel(x, y, color)`
 
 ### 2D Primitives & Rasterization
-- [ ] Implement Bresenham’s line algorithm
+- [x] Implement Bresenham’s line algorithm
 - [ ] Implement Scanline algorithm for filled triangles
 
 ### 3D Data Structures & Coordinates
