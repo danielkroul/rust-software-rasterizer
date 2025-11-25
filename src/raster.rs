@@ -1,71 +1,162 @@
+use std::mem::swap;
+
 use crate::drawable::Drawable;
 
 /* --- Bresenham's line algorithm ---
-Parts of this algorithm seem entirely unintuitive.
-It troubles me. I will add an explanation here, 
-as soon as I understand it fully.
+Draws a line in integer coordinates using only integer addition, subtraction and comparisons.
+Other strategies might use division and floating-point maths, which are computationally expensive.
+The key idea:
+- Track an integer "error" representing the distance between the discrete y and the ideal line.
+- At each step in the driving axis (x for shallow lines), we increment the error by 2*dy.
+- When the error passes the threshold, step in the other axis (y) and subtract 2*dx.
+- This ensures exactly dy y-steps occur over dx x-steps, approximating the slope perfectly.
 */
 
-/// Draws a line to any surface implementing the `Drawable` trait 
-/// using Bresenham's line algorithm.
+/// Draws a line from (`x1`, `y1`) to (`x2`, `y2`) to any surface 
+/// implementing the `Drawable` trait using Bresenham's line algorithm.
 pub fn draw_line<D: Drawable>(
     surface: &mut D, 
-    x1: i32,
-    y1: i32,
-    x2: i32,
-    y2: i32,
+    mut x1: i32, mut y1: i32,
+    x2: i32, y2: i32,
     color: u32,
 ) {
     let w = surface.width() as i32;
     let h = surface.height() as i32;
 
-    // Early exit for lines fully outside screen or zero-length lines.
-    if (x1 < 0 && x2 < 0) || (x1 >= w && x2 >= w) { return; }
-    if (y1 < 0 && y2 < 0) || (y1 >= h && y2 >= h) { return; }
-    if x1 == x2 && y1 == y2 {
-        if x1 > 0 && y1 > 0 { 
-            surface.set_pixel(x1 as usize, y1 as usize, color) 
-        };
-        return;
-    }
+    /*
+    TODO: Implement proper line-clipping here (e.g. Cohen-Sutherland).
+    clip_line(&mut x1, &mut y1, &mut x2, &mut y2, w, h);
+    If returns false (line rejected), return;
 
-    // Calculate deltas (the change on each axis)
-    let dx = (x2 - x1).abs();
-    let dy = (y2 - y1).abs();
-
-    // Determine the direction to step in x and y
-    let step_x = if x2 > x1 { 1 } else { -1 };
-    let step_y = if y2 > y1 { 1 } else { -1 };
-
-    let y_major = dy > dx; // Check if y is driving axis
-
-    let mut x = x1;
-    let mut y = y1;
-
-    // Swap deltas and step directions if y is driving axis
-    let (dx, dy) = if y_major { (dy, dx) } else { (dx, dy) };
-    let (step_x, step_y) = if y_major { (step_y, step_x) } else { (step_x, step_y) };
+    After clipping, we know coordinates are safe. 
+    We can use an unsafe plot or direct buffer access for speed.
+    */
 
     // Helper closure for plotting pixels with bounds check
     let mut plot = |x: i32, y: i32| {
         if x >= 0 && y >= 0 && x < w && y < h {
-            if y_major {
-                surface.set_pixel(y as usize, x as usize, color);
-            } else {
-                surface.set_pixel(x as usize, y as usize, color);
-            }
+            surface.set_pixel(x as usize, y as usize, color);
         }
     };
 
-    let mut error = 2 * dy - dx; // Initialize error
+    // Early exit for zero-length lines.
+    if x1 == x2 && y1 == y2 {
+        plot(x1, y1);
+        return;
+    }
+    
+    // Calculate deltas (the change on each axis)
+    let mut dx = (x2 - x1).abs();
+    let mut dy = (y2 - y1).abs();
 
+    // Use helper functions for horizontal and vertical lines.
+    if dy == 0 { 
+        draw_horizontal(y1, x1, x2, w, h, &mut plot);
+        return;
+    }
+    if dx == 0 { 
+        draw_vertical(x1, y1, y2, w, h, &mut plot);
+        return;
+    }
+    
+    // Early exit for lines fully outside `surface`
+    if (x1 < 0 && x2 < 0) || (x1 >= w && x2 >= w) { return; }
+    if (y1 < 0 && y2 < 0) || (y1 >= h && y2 >= h) { return; }
+
+    // Use helper function for diagonal lines.
+    if dx == dy {
+        draw_diagonal(x1, y1, x2, y2, &mut plot);
+        return;
+    }
+
+    // Determine the direction to step in x and y
+    let mut step_x = (x2 - x1).signum();
+    let mut step_y = (y2 - y1).signum();
+
+    let steep = dy > dx; // Check if y is driving axis
+
+    // Swap axes if line is steep
+    if steep {
+        swap(&mut x1, &mut y1);
+        swap(&mut dx, &mut dy);
+        swap(&mut step_x, &mut step_y);
+    }
+    
+    let err_dec = 2 * dx;
+    let err_inc = 2 * dy;
+    
+    let (mut x, mut y) = (x1, y1);
+    
+    // --- Bresenham's Algorithm ---
+    let mut err = err_inc - dx; // Initialize error
+    
     for _ in 0..=dx {
-        plot(x, y);
-        if error >= 0 {
-            y += step_y;      // Move y when error passes threshold
-            error -= 2 * dx;  // Correct error after moving y
+        if steep { plot(y, x) } else { plot(x, y) }
+        if err >= 0 {
+            y += step_y; // Move y when error passes threshold
+            err -= err_dec; // Correct error after moving y
         }
-        error += 2 * dy;      // Increment error every step
-        x += step_x;          // Always move along driving axis
+        err += err_inc; // Increment error every step
+        x += step_x; // Always move along driving axis
+    }
+}
+
+/// Private helper function for `draw_line`.
+/// 
+/// Draws a horizontal line from (`x1`, `y`) to (`x2`, `y`) to any surface
+/// implementing the `Drawable` trait.
+fn draw_horizontal(
+    y: i32, 
+    mut x1: i32, mut x2: i32, 
+    w: i32, h: i32,
+    plot: &mut impl FnMut(i32, i32),
+) {
+    // Horizontal line specific bounds checks and early exit
+    if y < 0 || y >= h as i32 { return; }
+    if (x1 < 0 && x2 < 0) || (x1 >= w && x2 >= w) { return; } 
+
+    if x1 > x2 { swap(&mut x1, &mut x2); }
+    (x1..=x2).for_each(|x| plot(x, y));
+}
+
+/// Private helper function for `draw_line`.
+/// 
+/// Draws a vertical line from (`x,` `y1`) to (`x,` `y2`) to any surface
+/// implementing the `Drawable` trait.
+fn draw_vertical(
+    x: i32, 
+    mut y1: i32, mut y2: i32, 
+    w: i32, h: i32,
+    plot: &mut impl FnMut(i32, i32),
+) {
+    // Vertical line specific bounds checks and early exit
+    if x < 0 || x >= w as i32 { return; }
+    if (y1 < 0 && y2 < 0) || (y1 >= h && y2 >= h) { return; } 
+
+    if y1 > y2 { swap(&mut y1, &mut y2); }
+    (y1..=y2).for_each(|y| plot(x, y));
+}
+
+/// Private helper function for `draw_line`.
+/// 
+/// Draws a diagonal line from (`x1`, `y1`) to (`x2`, `y2`) to any surface
+/// implementing the `Drawable` trait.
+fn draw_diagonal(
+    x1: i32, y1: i32,
+    x2: i32, y2: i32,
+    plot: &mut impl FnMut(i32, i32),
+) {
+    // No extra bounds check here; uses bounds check from `draw_line`
+    
+    let step_x = (x2 - x1).signum();
+    let step_y = (y2 - y1).signum();
+    let steps = (x2 - x1).abs();
+
+    let (mut x, mut y) = (x1, y1);
+
+    for _ in 0..=steps {
+        plot(x, y);
+        x += step_x;
+        y += step_y;
     }
 }
