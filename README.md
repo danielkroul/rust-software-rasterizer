@@ -19,7 +19,7 @@ This project is primarily for my own education. It is not intended as a library 
 
 ### 2D Primitives & Rasterization
 - [x] Implement Bresenham’s line algorithm
-- [ ] Implement Scanline algorithm for filled triangles
+- [x] Implement Scanline algorithm for filled triangles
 
 ### 3D Data Structures & Coordinates
 - [ ] Define `Vector3`, `Vertex`, and `Model` structs
